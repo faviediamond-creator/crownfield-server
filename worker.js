@@ -1,4 +1,4 @@
-// Crownfield Arena Build 99 — production Worker + Durable Object multiplayer backend.
+// Crownfield Arena Build 100 — production Worker + Durable Object multiplayer backend.
 import { peerAttach, matchAttach, stats } from './relay.js';
 
 export class Lobby {
@@ -6,7 +6,7 @@ export class Lobby {
   async fetch(req) {
     const u = new URL(req.url);
     if (u.pathname === '/health') {
-      return json({ ok: true, service: 'crownfield-arena-relay', architecture: 'durable-object', build: 99, multiplayer: 'ready', ...stats() });
+      return json({ ok: true, service: 'crownfield-arena-relay', architecture: 'durable-object', build: 100, multiplayer: 'ready', ...stats() });
     }
     if (req.headers.get('Upgrade') !== 'websocket') return new Response('Expected WebSocket', { status: 426 });
     const pair = new WebSocketPair();

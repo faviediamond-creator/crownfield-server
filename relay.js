@@ -1,4 +1,4 @@
-// Crownfield Arena Build 98 — stateful multiplayer relay.
+// Crownfield Arena Build 100 — stateful multiplayer relay (weak-connection hardened).
 // Private room codes and Quick Match use the same Durable Object coordination point.
 // The relay stores room-code -> host mapping in Durable Object storage so a join is
 // not dependent on a transient in-memory lookup alone.
@@ -12,8 +12,9 @@ const CID = /^[A-Za-z0-9]{6,40}$/;
 const ROOM = /^[A-HJ-NP-Z2-9]{5}$/;
 const GAMES = new Set(['chess', 'pool', 'whot', 'ludo']);
 const NAMEOK = s => String(s == null ? '' : s).replace(/[<>&"'`]/g, '').trim().slice(0, 14);
-const GRACE_MS = 45000;
-const DEAD_MS = 70000;
+const GRACE_MS = 120000;   // a dropped player keeps their seat for 2 minutes
+const DEAD_MS = 70000;     // quick-match seekers
+const PEER_DEAD_MS = 25000; // in-game sockets that went silent (clients ping every 4s)
 const ALPHA = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
 function newCode() {
@@ -31,7 +32,7 @@ function sweep() {
     if (now - s.seen > DEAD_MS) { try { s.ws.close(); } catch (_) {} if (seekers.delete(s.id) && s.g) pushList(s.g); }
   }
   for (const p of [...peers.values()]) {
-    if (!p.away && now - p.seen > DEAD_MS) { try { p.kill && p.kill(); } catch (_) {} }
+    if (!p.away && now - p.seen > PEER_DEAD_MS) { try { p.kill && p.kill(); } catch (_) {} }
   }
 }
 function ensureSweeper() { if (!sweeper) sweeper = setInterval(sweep, 15000); }
@@ -112,13 +113,14 @@ export async function peerAttach(ws, id, k, storage) {
   ws.addEventListener('message', async ev => {
     if (me.dead) return;
     if (typeof ev.data !== 'string' || ev.data.length > 40000) return;
-    const now = Date.now() / 1000 | 0;
-    if (me.t !== now) { me.t = now; me.n = 0; }
-    if (++me.n > 240) return;
     let m; try { m = JSON.parse(ev.data); } catch (_) { return; }
     if (!m || typeof m.t !== 'string') return;
     me.seen = Date.now();
+    // Keep-alive pings are never rate limited, so a busy link is not mistaken for a dead one.
     if (m.t === 'p') return sendNow({ t: 'p', s: Date.now() });
+    const now = Date.now() / 1000 | 0;
+    if (me.t !== now) { me.t = now; me.n = 0; }
+    if (++me.n > 300) return;
 
     if (m.t === 'dial') {
       const cid = String(m.cid || ''), requestedTo = String(m.to || '');
